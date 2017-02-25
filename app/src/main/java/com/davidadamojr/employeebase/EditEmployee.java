@@ -4,58 +4,53 @@ import android.app.ProgressDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.AsyncTask;
-import android.os.Bundle;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
-import android.widget.TextView;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-public class ViewEmployee extends AppCompatActivity implements View.OnClickListener {
+import java.util.HashMap;
 
-    private TextView textViewId;
-    private TextView textViewFirstName;
-    private TextView textViewLastName;
-    private TextView textViewTitle;
-    private TextView textViewSalary;
+public class EditEmployee extends AppCompatActivity implements View.OnClickListener {
 
-    private Button buttonEdit;
-    private Button buttonDelete;
+    private EditText editTextUpdFname;
+    private EditText editTextUpdLname;
+    private EditText editTextUpdTitle;
+    private EditText editTextUpdSalary;
+
+    private Button buttonUpdate;
 
     private String id;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_view_employee);
+        setContentView(R.layout.activity_update_employee);
 
         Intent intent = getIntent();
 
         id = intent.getStringExtra(Config.EMP_ID);
 
-        textViewId = (TextView) findViewById(R.id.textViewId);
-        textViewFirstName = (TextView) findViewById(R.id.textViewFirstName);
-        textViewLastName = (TextView) findViewById(R.id.textViewLastName);
-        textViewTitle = (TextView) findViewById(R.id.textViewTitle);
-        textViewSalary = (TextView) findViewById(R.id.textViewSalary);
+        editTextUpdFname = (EditText) findViewById(R.id.editTextUpdFname);
+        editTextUpdLname = (EditText) findViewById(R.id.editTextUpdLname);
+        editTextUpdTitle = (EditText) findViewById(R.id.editTextUpdTitle);
+        editTextUpdSalary = (EditText) findViewById(R.id.editTextUpdSalary);
 
-        buttonEdit = (Button) findViewById(R.id.buttonEdit);
-        buttonDelete = (Button) findViewById(R.id.buttonDelete);
+        buttonUpdate = (Button) findViewById(R.id.btnUpdate);
 
-        buttonEdit.setOnClickListener(this);
-        buttonDelete.setOnClickListener(this);
-
-        textViewId.setText(id);
-
-        getSupportActionBar().setTitle("View Employee");
+        getSupportActionBar().setTitle("Edit Employee");
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
         getEmployee();
+
+        buttonUpdate.setOnClickListener(this);
     }
 
     private void getEmployee() {
@@ -65,7 +60,7 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
             @Override
             protected void onPreExecute() {
                 super.onPreExecute();
-                loading = ProgressDialog.show(ViewEmployee.this, "Fetching...", "Wait...", false, false);
+                loading = ProgressDialog.show(EditEmployee.this, "Fetching...", "Wait...", false, false);
             }
 
             @Override
@@ -98,88 +93,67 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
             String title = employee.getString(Config.TAG_TITLE);
             String salary = employee.getString(Config.TAG_SAL);
 
-            textViewFirstName.setText(fname);
-            textViewLastName.setText(lname);
-            textViewTitle.setText(title);
-            textViewSalary.setText(salary);
+            editTextUpdFname.setText(fname);
+            editTextUpdLname.setText(lname);
+            editTextUpdTitle.setText(title);
+            editTextUpdSalary.setText(salary);
         } catch (JSONException e) {
             e.printStackTrace();
         }
     }
 
-    private void deleteEmployee() {
-        class DeleteEmployee extends AsyncTask<Void,Void,String> {
+    private void updateEmployee() {
+        final String fname = editTextUpdFname.getText().toString().trim();
+        final String lname = editTextUpdLname.getText().toString().trim();
+        final String title = editTextUpdTitle.getText().toString().trim();
+        final String salary = editTextUpdSalary.getText().toString().trim();
+
+        class UpdateEmployee extends AsyncTask<Void,Void,String>{
 
             ProgressDialog loading;
 
             @Override
             protected void onPreExecute() {
                 super.onPreExecute();
-                loading = ProgressDialog.show(ViewEmployee.this, "Updating...", "Wait...", false, false);
+                loading = ProgressDialog.show(EditEmployee.this, "Updating...", "Wait...", false, false);
             }
 
             @Override
             protected void onPostExecute(String str) {
                 super.onPostExecute(str);
                 loading.dismiss();
-                Toast.makeText(ViewEmployee.this, str, Toast.LENGTH_SHORT).show();
+                Toast.makeText(EditEmployee.this, str, Toast.LENGTH_SHORT).show();
             }
 
             @Override
             protected String doInBackground(Void... params) {
+                HashMap<String, String> hashMap = new HashMap<>();
+                hashMap.put(Config.KEY_EMP_ID, id);
+                hashMap.put(Config.KEY_EMP_FNAME, fname);
+                hashMap.put(Config.KEY_EMP_LNAME, lname);
+                hashMap.put(Config.KEY_EMP_TITLE, title);
+                hashMap.put(Config.KEY_EMP_SAL, salary);
+
                 RequestHandler requestHandler = new RequestHandler();
-                String str = requestHandler.sendGetRequestParam(Config.URL_DELETE_EMP, id);
+
+                String str = requestHandler.sendPostRequest(Config.URL_UPDATE_EMP, hashMap);
+
                 return str;
             }
         }
 
-        if (Utils.isOnline()) {
-            DeleteEmployee de = new DeleteEmployee();
-            de.execute();
-            startActivity(new Intent(ViewEmployee.this, AllEmployees.class));
-        } else {
-            showInternetPrompt();
-        }
-    }
-
-    private void confirmDeleteEmployee() {
-        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(this);
-        alertDialogBuilder.setMessage("Are you sure you want to delete this employee?");
-
-        alertDialogBuilder.setPositiveButton("Yes",
-                new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        deleteEmployee();
-                    }
-                });
-
-        alertDialogBuilder.setNegativeButton("No",
-                new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-
-                    }
-                });
-
-        AlertDialog alertDialog = alertDialogBuilder.create();
-        alertDialog.show();
+        UpdateEmployee ue = new UpdateEmployee();
+        ue.execute();
     }
 
     @Override
     public void onClick(View v) {
-        if (v == buttonEdit) {
+        if (v == buttonUpdate) {
             if (Utils.isOnline()) {
-                Intent intent = new Intent(this, EditEmployee.class);
-                intent.putExtra(Config.EMP_ID, id);
-                startActivity(intent);
+                updateEmployee();
             } else {
                 showInternetPrompt();
             }
-        }
-
-        if (v == buttonDelete) {
-            confirmDeleteEmployee();
         }
     }
 

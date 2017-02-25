@@ -1,20 +1,31 @@
 package com.davidadamojr.employeebase;
 
 import android.app.ProgressDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.AsyncTask;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.SimpleAdapter;
+import android.widget.Toast;
+
+import com.google.android.gms.appindexing.Action;
+import com.google.android.gms.appindexing.AppIndex;
+import com.google.android.gms.appindexing.Thing;
+import com.google.android.gms.common.api.GoogleApiClient;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -29,12 +40,65 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_all_employees);
 
+        getSupportActionBar().setTitle("All Employees");
+
         listView = (ListView) findViewById(R.id.listView);
         listView.setOnItemClickListener(this);
-        getJSON();
+
+        if (Utils.isOnline()) {
+            getJSON();
+        } else {
+            showInternetPrompt();
+        }
     }
 
-    private void showEmployee() {
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.all_employees, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.action_new_employee:
+                // user chose to add a new employee
+                startActivity(new Intent(this, NewEmployee.class));
+                return true;
+
+            case R.id.action_refresh:
+                if (Utils.isOnline()) {
+                    getJSON();
+                } else {
+                    showInternetPrompt();
+                }
+                return true;
+
+            default:
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
+    public void showInternetPrompt() {
+        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(this);
+        alertDialogBuilder.setMessage("Unable to connect to the Internet. Please check your internet" +
+                " connection!");
+
+        alertDialogBuilder.setPositiveButton("OK",
+                new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                });
+
+        alertDialogBuilder.setCancelable(true);
+
+        AlertDialog alertDialog = alertDialogBuilder.create();
+        alertDialog.show();
+    }
+
+    private void showEmployees() {
         JSONObject jsonObject = null;
         ArrayList<HashMap<String, String>> list = new ArrayList<HashMap<String, String>>();
 
@@ -45,7 +109,7 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
             for (int i=0; i < result.length(); i++) {
                 JSONObject jo = result.getJSONObject(i);
                 String id = jo.getString(Config.TAG_ID);
-                String name = "%s %s".format(jo.getString(Config.TAG_FNAME), jo.getString(Config.TAG_LNAME));
+                String name = String.format("%s %s", jo.getString(Config.TAG_FNAME), jo.getString(Config.TAG_LNAME));
                 String title = jo.getString(Config.TAG_TITLE);
 
                 HashMap<String, String> employee = new HashMap<>();
@@ -79,6 +143,7 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
                 super.onPostExecute(str);
                 loading.dismiss();
                 JSON_STRING = str;
+                showEmployees();
             }
 
             @Override
@@ -95,10 +160,14 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
 
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        Intent intent = new Intent(this, ViewEmployee.class);
-        HashMap<String, String> map = (HashMap) parent.getItemAtPosition(position);
-        String empId = map.get(Config.TAG_ID).toString();
-        intent.putExtra(Config.EMP_ID, empId);
-        startActivity(intent);
+        if (Utils.isOnline()) {
+            Intent intent = new Intent(this, ViewEmployee.class);
+            HashMap<String, String> map = (HashMap) parent.getItemAtPosition(position);
+            String empId = map.get(Config.TAG_ID).toString();
+            intent.putExtra(Config.EMP_ID, empId);
+            startActivity(intent);
+        } else {
+            showInternetPrompt();
+        }
     }
 }

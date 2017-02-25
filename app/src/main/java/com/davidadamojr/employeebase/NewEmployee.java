@@ -1,10 +1,12 @@
 package com.davidadamojr.employeebase;
 
 import android.app.ProgressDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.AsyncTask;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -12,7 +14,7 @@ import android.widget.Toast;
 
 import java.util.HashMap;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener {
+public class NewEmployee extends AppCompatActivity implements View.OnClickListener {
 
     // Defining views
     private EditText editTextFirstName;
@@ -21,21 +23,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private EditText editTextSalary;
 
     private Button buttonAdd;
-    private Button buttonView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.activity_new_employee);
 
         editTextFirstName = (EditText) findViewById(R.id.editTextFirstName);
         editTextLastName = (EditText) findViewById(R.id.editTextLastName);
         editTextTitle = (EditText) findViewById(R.id.editTextTitle);
         editTextSalary = (EditText) findViewById(R.id.editTextSalary);
 
+        buttonAdd = (Button) findViewById(R.id.buttonAdd);
+
         // setting listeners for the buttons
         buttonAdd.setOnClickListener(this);
-        buttonView.setOnClickListener(this);
+
+        getSupportActionBar().setTitle("New Employee");
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
     }
 
     private void addEmployee() {
@@ -50,10 +55,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             ProgressDialog loading;
 
             @Override
+            protected void onPreExecute() {
+                super.onPreExecute();
+                loading = ProgressDialog.show(NewEmployee.this, "Adding...", "Wait...", false, false);
+            }
+
+            @Override
             protected void onPostExecute(String str) {
                 super.onPostExecute(str);
                 loading.dismiss();
-                Toast.makeText(MainActivity.this, str, Toast.LENGTH_LONG).show();
+                Toast.makeText(NewEmployee.this, str, Toast.LENGTH_SHORT).show();
+                startActivity(new Intent(NewEmployee.this, AllEmployees.class));
             }
 
             @Override
@@ -77,11 +89,30 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     @Override
     public void onClick(View v) {
         if (v == buttonAdd) {
-            addEmployee();
+            if (Utils.isOnline()) {
+                addEmployee();
+            } else {
+                showInternetPrompt();
+            }
         }
+    }
 
-        if (v == buttonView) {
-            startActivity(new Intent(this, AllEmployees.class));
-        }
+    public void showInternetPrompt() {
+        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(this);
+        alertDialogBuilder.setMessage("Unable to process your request. Please check your internet" +
+                " connection and try again!");
+
+        alertDialogBuilder.setPositiveButton("OK",
+                new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                });
+
+        alertDialogBuilder.setCancelable(true);
+
+        AlertDialog alertDialog = alertDialogBuilder.create();
+        alertDialog.show();
     }
 }
