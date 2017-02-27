@@ -64,8 +64,8 @@ public class NewEmployee extends AppCompatActivity implements View.OnClickListen
             protected void onPostExecute(String str) {
                 super.onPostExecute(str);
                 loading.dismiss();
-                Toast.makeText(NewEmployee.this, str, Toast.LENGTH_SHORT).show();
                 startActivity(new Intent(NewEmployee.this, AllEmployees.class));
+                Toast.makeText(NewEmployee.this, str, Toast.LENGTH_SHORT).show();
             }
 
             @Override

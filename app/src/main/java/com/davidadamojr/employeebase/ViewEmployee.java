@@ -29,6 +29,9 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
 
     private String id;
 
+    private static final String POLL_ACTION = "com.davidadamojr.employeebase.action.DETAIL";
+    private static final String POLL_EXTRA = "com.davidadamojr.employeebase.extra.ID";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

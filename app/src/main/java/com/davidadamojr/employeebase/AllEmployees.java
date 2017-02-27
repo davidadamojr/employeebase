@@ -1,9 +1,17 @@
 package com.davidadamojr.employeebase;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.AsyncTask;
+import android.os.BatteryManager;
 import android.os.Bundle;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
@@ -14,26 +22,26 @@ import android.widget.AdapterView;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.SimpleAdapter;
-import android.widget.Toast;
-
-import com.google.android.gms.appindexing.Action;
-import com.google.android.gms.appindexing.AppIndex;
-import com.google.android.gms.appindexing.Thing;
-import com.google.android.gms.common.api.GoogleApiClient;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static android.os.SystemClock.elapsedRealtime;
 
 public class AllEmployees extends AppCompatActivity implements ListView.OnItemClickListener {
 
     private ListView listView;
 
-    private String JSON_STRING;
+    private static final String POLL_ACTION = "com.davidadamojr.employeebase.action.ALL";
+    private static final String REFRESH_ACTION = "com.davidadamojr.employeebase.action.REFRESH_ALL";
+
+    private BroadcastReceiver refreshReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,11 +53,67 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
         listView = (ListView) findViewById(R.id.listView);
         listView.setOnItemClickListener(this);
 
+        refreshReceiver = new BroadcastReceiver() {
+            public void onReceive(Context context, Intent intent) {
+                String jsonStr = intent.getStringExtra("response");
+                retrieveEmployees(jsonStr);
+            }
+        };
+        IntentFilter iFilter = new IntentFilter();
+        iFilter.addAction(REFRESH_ACTION);
+        registerReceiver(refreshReceiver, iFilter);
+
         if (Utils.isOnline()) {
             getJSON();
+
+            ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo activeNetwork = connManager.getActiveNetworkInfo();
+            Map<String, Integer> batteryDetails = getBatteryDetails();
+
+            boolean isWifi = activeNetwork.getType() == ConnectivityManager.TYPE_WIFI;
+
+            // battery level greater than 50% is OK
+            boolean batteryOk = batteryDetails.get("level") > 50;
+
+            // batteryPlugged constant greater than 0 indicates it is connected to power source
+            boolean batteryPlugged = batteryDetails.get("plugged") > 0;
+
+            if (isWifi && batteryOk && batteryPlugged) {
+                // poll every minute
+                Intent pollIntent = new Intent(AllEmployees.this, AllEmployeeService.class);
+                pollIntent.setAction(POLL_ACTION);
+                AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+                //long interval = 300000; // 5 minutes
+                long interval = 10000;
+                long triggerTime = elapsedRealtime() + interval;
+                alarmManager.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, triggerTime, interval + 5000, pIntent);
+            } else if (isWifi && batteryOk && !batteryPlugged) {
+                // poll every five minutes
+                Intent pollIntent = new Intent(AllEmployees.this, AllEmployeeService.class);
+                pollIntent.setAction(POLL_ACTION);
+                AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+                PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+                long interval = 600000; // 10 minutes
+                long triggerTime = elapsedRealtime() + interval;
+                alarmManager.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, triggerTime, triggerTime, pIntent);
+            }
+
+            // do not poll
         } else {
             showInternetPrompt();
         }
+    }
+
+    public Map<String, Integer> getBatteryDetails() {
+        Map<String, Integer> batteryDetails = new HashMap<>();
+        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        batteryDetails.put("level", batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1));
+        batteryDetails.put("plugged", batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1));
+
+        return batteryDetails;
     }
 
     @Override
@@ -79,6 +143,23 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
         }
     }
 
+    @Override
+    public void onStop() {
+        super.onStop();
+        // unregister broadcast receiver
+        if (refreshReceiver != null) {
+            unregisterReceiver(refreshReceiver);
+            refreshReceiver = null;
+        }
+
+        // cancel alarm manager
+        Intent pollIntent = new Intent(AllEmployees.this, AllEmployeeService.class);
+        pollIntent.setAction(POLL_ACTION);
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_CANCEL_CURRENT);
+        alarmManager.cancel(pIntent);
+    }
+
     public void showInternetPrompt() {
         AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(this);
         alertDialogBuilder.setMessage("Unable to connect to the Internet. Please check your internet" +
@@ -98,12 +179,11 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
         alertDialog.show();
     }
 
-    private void showEmployees() {
-        JSONObject jsonObject = null;
-        ArrayList<HashMap<String, String>> list = new ArrayList<HashMap<String, String>>();
-
+    private void retrieveEmployees(String jsonStr) {
+        List<HashMap<String, String>> employeeList = new ArrayList<HashMap<String,String>>();
         try {
-            jsonObject = new JSONObject(JSON_STRING);
+            employeeList.clear();
+            JSONObject jsonObject = new JSONObject(jsonStr);
             JSONArray result = jsonObject.getJSONArray(Config.TAG_JSON_ARRAY);
 
             for (int i=0; i < result.length(); i++) {
@@ -116,16 +196,16 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
                 employee.put(Config.TAG_ID, id);
                 employee.put(Config.TAG_NAME, name);
                 employee.put(Config.TAG_TITLE, title);
-                list.add(employee);
+                employeeList.add(employee);
             }
         } catch (JSONException e) {
             e.printStackTrace();
         }
 
-        ListAdapter adapter = new SimpleAdapter(AllEmployees.this, list, R.layout.list_item,
+        SimpleAdapter employeeAdapter = new SimpleAdapter(AllEmployees.this, employeeList, R.layout.list_item,
                 new String[]{Config.TAG_NAME, Config.TAG_TITLE},
                 new int[]{R.id.name, R.id.title});
-        listView.setAdapter(adapter);
+        listView.setAdapter(employeeAdapter);
     }
 
     private void getJSON() {
@@ -142,8 +222,7 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
             protected void onPostExecute(String str) {
                 super.onPostExecute(str);
                 loading.dismiss();
-                JSON_STRING = str;
-                showEmployees();
+                retrieveEmployees(str);
             }
 
             @Override
