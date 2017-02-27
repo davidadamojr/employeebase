@@ -1,8 +1,15 @@
 package com.davidadamojr.employeebase;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AlertDialog;
@@ -16,6 +23,10 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.Map;
+
+import static android.os.SystemClock.elapsedRealtime;
+
 public class ViewEmployee extends AppCompatActivity implements View.OnClickListener {
 
     private TextView textViewId;
@@ -28,6 +39,8 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
     private Button buttonDelete;
 
     private String id;
+
+    private BroadcastReceiver refreshReceiver;
 
     private static final String POLL_ACTION = "com.davidadamojr.employeebase.action.DETAIL";
     private static final String POLL_EXTRA = "com.davidadamojr.employeebase.extra.ID";
@@ -58,7 +71,51 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
         getSupportActionBar().setTitle("View Employee");
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
+        refreshReceiver = new BroadcastReceiver() {
+            public void onReceive(Context context, Intent intent) {
+                String jsonStr = intent.getStringExtra("response");
+                showEmployee(jsonStr);
+            }
+        };
+        IntentFilter iFilter = new IntentFilter();
+        iFilter.addAction(POLL_ACTION);
+        registerReceiver(refreshReceiver, iFilter);
+
         getEmployee();
+
+        ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetwork = connManager.getActiveNetworkInfo();
+        Map<String, Integer> batteryDetails = Utils.getBatteryDetails();
+
+        boolean isWifi = activeNetwork.getType() == ConnectivityManager.TYPE_WIFI;
+
+        // battery level greater than 50% is OK
+        boolean batteryOk = batteryDetails.get("level") > 50;
+
+        // batteryPlugged constant greater than 0 indicates it is connected to power source
+        boolean batteryPlugged = batteryDetails.get("plugged") > 0;
+
+        //TODO: refactor
+        if (isWifi && batteryOk && batteryPlugged) {
+            // poll every five minutes
+            // setPoll(15000);
+            setPoll(300000);
+        } else if (isWifi && batteryOk && !batteryPlugged) {
+            // poll every ten minutes
+            // setPoll(15000);
+            setPoll(600000);
+        }
+    }
+
+    private void setPoll(long interval) {
+        Intent pollIntent = new Intent(ViewEmployee.this, PollService.class);
+        pollIntent.setAction(POLL_ACTION);
+        pollIntent.putExtra(POLL_EXTRA, id);
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        PendingIntent pIntent = PendingIntent.getService(ViewEmployee.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        long triggerTime = elapsedRealtime() + interval;
+        alarmManager.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, triggerTime, interval, pIntent);
     }
 
     private void getEmployee() {
@@ -203,5 +260,23 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
 
         AlertDialog alertDialog = alertDialogBuilder.create();
         alertDialog.show();
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+
+        // unregister broadcast receiver
+        if (refreshReceiver != null) {
+            unregisterReceiver(refreshReceiver);
+            refreshReceiver = null;
+        }
+
+        // cancel alarm manager
+        Intent pollIntent = new Intent(ViewEmployee.this, PollService.class);
+        pollIntent.setAction(POLL_ACTION);
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        PendingIntent pIntent = PendingIntent.getService(ViewEmployee.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        alarmManager.cancel(pIntent);
     }
 }

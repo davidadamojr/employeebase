@@ -42,7 +42,7 @@
         </activity>
 
         <service
-            android:name=".AllEmployeeService"
+            android:name=".PollService"
             android:exported="false"></service>
     </application>
 

@@ -10,8 +10,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
-import android.os.BatteryManager;
 import android.os.Bundle;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
@@ -19,7 +19,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
-import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.SimpleAdapter;
 
@@ -39,9 +38,9 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
     private ListView listView;
 
     private static final String POLL_ACTION = "com.davidadamojr.employeebase.action.ALL";
-    private static final String REFRESH_ACTION = "com.davidadamojr.employeebase.action.REFRESH_ALL";
 
     private BroadcastReceiver refreshReceiver;
+    private BroadcastReceiver contextReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,22 +52,14 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
         listView = (ListView) findViewById(R.id.listView);
         listView.setOnItemClickListener(this);
 
-        refreshReceiver = new BroadcastReceiver() {
-            public void onReceive(Context context, Intent intent) {
-                String jsonStr = intent.getStringExtra("response");
-                retrieveEmployees(jsonStr);
-            }
-        };
-        IntentFilter iFilter = new IntentFilter();
-        iFilter.addAction(REFRESH_ACTION);
-        registerReceiver(refreshReceiver, iFilter);
+        registerReceivers();
 
         if (Utils.isOnline()) {
             getJSON();
 
             ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
             NetworkInfo activeNetwork = connManager.getActiveNetworkInfo();
-            Map<String, Integer> batteryDetails = getBatteryDetails();
+            Map<String, Integer> batteryDetails = Utils.getBatteryDetails();
 
             boolean isWifi = activeNetwork.getType() == ConnectivityManager.TYPE_WIFI;
 
@@ -78,27 +69,15 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
             // batteryPlugged constant greater than 0 indicates it is connected to power source
             boolean batteryPlugged = batteryDetails.get("plugged") > 0;
 
+            // refactor
             if (isWifi && batteryOk && batteryPlugged) {
-                // poll every minute
-                Intent pollIntent = new Intent(AllEmployees.this, AllEmployeeService.class);
-                pollIntent.setAction(POLL_ACTION);
-                AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-                PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-
-                //long interval = 300000; // 5 minutes
-                long interval = 10000;
-                long triggerTime = elapsedRealtime() + interval;
-                alarmManager.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, triggerTime, interval + 5000, pIntent);
-            } else if (isWifi && batteryOk && !batteryPlugged) {
                 // poll every five minutes
-                Intent pollIntent = new Intent(AllEmployees.this, AllEmployeeService.class);
-                pollIntent.setAction(POLL_ACTION);
-                AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-                PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-
-                long interval = 600000; // 10 minutes
-                long triggerTime = elapsedRealtime() + interval;
-                alarmManager.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, triggerTime, triggerTime, pIntent);
+                setPoll(300000);
+                // setPoll(15000);
+            } else if (isWifi && batteryOk && !batteryPlugged) {
+                // poll every ten minutes
+                setPoll(600000);
+                // setPoll(15000);
             }
 
             // do not poll
@@ -107,13 +86,39 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
         }
     }
 
-    public Map<String, Integer> getBatteryDetails() {
-        Map<String, Integer> batteryDetails = new HashMap<>();
-        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        batteryDetails.put("level", batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1));
-        batteryDetails.put("plugged", batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1));
+    private void registerReceivers() {
+        refreshReceiver = new BroadcastReceiver() {
+            public void onReceive(Context context, Intent intent) {
+                String jsonStr = intent.getStringExtra("response");
+                retrieveEmployees(jsonStr);
+            }
+        };
+        IntentFilter refreshFilter = new IntentFilter();
+        refreshFilter.addAction(POLL_ACTION);
+        registerReceiver(refreshReceiver, refreshFilter);
 
-        return batteryDetails;
+        contextReceiver = new BroadcastReceiver() {
+            public void onReceive(Context context, Intent intent) {
+
+            }
+        };
+        IntentFilter contextFilter = new IntentFilter();
+        contextFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+        contextFilter.addAction(Intent.ACTION_BATTERY_LOW);
+        contextFilter.addAction(Intent.ACTION_BATTERY_OKAY);
+        contextFilter.addAction(Intent.ACTION_POWER_CONNECTED);
+        contextFilter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        registerReceiver(contextReceiver, contextFilter);
+    }
+
+    private void setPoll(long interval) {
+        Intent pollIntent = new Intent(AllEmployees.this, PollService.class);
+        pollIntent.setAction(POLL_ACTION);
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        long triggerTime = elapsedRealtime() + interval;
+        alarmManager.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, triggerTime, interval, pIntent);
     }
 
     @Override
@@ -152,11 +157,15 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
             refreshReceiver = null;
         }
 
+        cancelPoll();
+    }
+
+    private void cancelPoll() {
         // cancel alarm manager
-        Intent pollIntent = new Intent(AllEmployees.this, AllEmployeeService.class);
+        Intent pollIntent = new Intent(AllEmployees.this, PollService.class);
         pollIntent.setAction(POLL_ACTION);
         AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_CANCEL_CURRENT);
+        PendingIntent pIntent = PendingIntent.getService(AllEmployees.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
         alarmManager.cancel(pIntent);
     }
 

@@ -7,24 +7,16 @@ import android.os.Handler;
 import android.os.Looper;
 import android.widget.Toast;
 
-/**
- * An {@link IntentService} subclass for handling asynchronous task requests in
- * a service on a separate handler thread.
- * <p>
- * TODO: Customize class - update intent actions, extra parameters and static
- * helper methods.
- */
-public class AllEmployeeService extends IntentService {
+public class PollService extends IntentService {
 
     private static final String ACTION_ALL = "com.davidadamojr.employeebase.action.ALL";
     private static final String ACTION_DETAIL = "com.davidadamojr.employeebase.action.DETAIL";
     private static final String EXTRA_ID = "com.davidadamojr.employeebase.extra.ID";
-    private static final String REFRESH_ACTION = "com.davidadamojr.employeebase.action.REFRESH_ALL";
 
     private Handler mHandler = new Handler(Looper.getMainLooper());
 
-    public AllEmployeeService() {
-        super("AllEmployeeService");
+    public PollService() {
+        super("PollService");
     }
 
     @Override
@@ -45,7 +37,7 @@ public class AllEmployeeService extends IntentService {
             RequestHandler requestHandler = new RequestHandler();
             String jsonStr = requestHandler.sendGetRequest(Config.URL_GET_ALL);
             Intent responseIntent = new Intent();
-            responseIntent.setAction(REFRESH_ACTION);
+            responseIntent.setAction(ACTION_ALL);
             responseIntent.putExtra("response", jsonStr);
             sendBroadcast(responseIntent);
         } else {
@@ -61,6 +53,21 @@ public class AllEmployeeService extends IntentService {
     }
 
     protected void handleActionDetail(String id) {
-
+        if (Utils.isOnline()) {
+            RequestHandler requestHandler = new RequestHandler();
+            String jsonStr = requestHandler.sendGetRequestParam(Config.URL_GET_EMP, id);
+            Intent responseIntent = new Intent();
+            responseIntent.setAction(ACTION_DETAIL);
+            responseIntent.putExtra("response", jsonStr);
+            sendBroadcast(responseIntent);
+        } else {
+            mHandler.post(new Runnable() {
+               @Override
+               public void run() {
+                   Toast.makeText(getApplicationContext(), "No internet connection.",
+                           Toast.LENGTH_SHORT).show();
+               }
+            });
+        }
     }
 }
