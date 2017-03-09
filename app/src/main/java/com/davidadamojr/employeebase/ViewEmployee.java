@@ -10,6 +10,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AlertDialog;
@@ -41,6 +42,7 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
     private String id;
 
     private BroadcastReceiver refreshReceiver;
+    private BroadcastReceiver contextReceiver;
 
     private static final String POLL_ACTION = "com.davidadamojr.employeebase.action.DETAIL";
     private static final String POLL_EXTRA = "com.davidadamojr.employeebase.extra.ID";
@@ -105,6 +107,43 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
             // setPoll(15000);
             setPoll(600000);
         }
+
+        contextReceiver = new BroadcastReceiver() {
+            public void onReceive(Context context, Intent intent) {
+                Map<String, Integer> batteryDetails = Utils.getBatteryDetails();
+                boolean batteryOk = batteryDetails.get("level") > 50;
+                boolean batteryPlugged = batteryDetails.get("plugged") > 0;
+                if (intent.getAction().equals(WifiManager.WIFI_STATE_CHANGED_ACTION)) {
+                    if (Utils.isOnline()) {
+                        // battery level greater than 50% is OK
+                        if (batteryOk && batteryPlugged) {
+                            setPoll(300000);
+                        } else if (batteryOk && !batteryPlugged) {
+                            setPoll(600000);
+                        }
+                    } else {
+                        cancelPoll();
+                    }
+                } else if (intent.getAction().equals(Intent.ACTION_BATTERY_LOW)) {
+                    cancelPoll();
+                } else if (intent.getAction().equals(Intent.ACTION_BATTERY_OKAY)) {
+                    if (Utils.isOnline()) {
+                        if (batteryOk && batteryPlugged) {
+                            setPoll(300000);
+                        } else if (batteryOk && !batteryPlugged) {
+                            setPoll(600000);
+                        }
+                    }
+                }
+            }
+        };
+        IntentFilter contextFilter = new IntentFilter();
+        contextFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+        contextFilter.addAction(Intent.ACTION_BATTERY_LOW);
+        contextFilter.addAction(Intent.ACTION_BATTERY_OKAY);
+        contextFilter.addAction(Intent.ACTION_POWER_CONNECTED);
+        contextFilter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        registerReceiver(contextReceiver, contextFilter);
     }
 
     private void setPoll(long interval) {
@@ -272,11 +311,23 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
             refreshReceiver = null;
         }
 
+        if (contextReceiver != null) {
+            unregisterReceiver(contextReceiver);
+            contextReceiver = null;
+        }
+
+        cancelPoll();
+    }
+
+    public void cancelPoll() {
         // cancel alarm manager
         Intent pollIntent = new Intent(ViewEmployee.this, PollService.class);
         pollIntent.setAction(POLL_ACTION);
         AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        PendingIntent pIntent = PendingIntent.getService(ViewEmployee.this, 0, pollIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-        alarmManager.cancel(pIntent);
+        PendingIntent pIntent = PendingIntent.getService(ViewEmployee.this, 0, pollIntent, PendingIntent.FLAG_NO_CREATE);
+        if (pIntent != null) {
+            alarmManager.cancel(pIntent);
+            pIntent.cancel();
+        }
     }
 }
