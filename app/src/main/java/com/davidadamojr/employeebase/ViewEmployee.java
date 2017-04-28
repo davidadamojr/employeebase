@@ -1,6 +1,8 @@
 package com.davidadamojr.employeebase;
 
+import android.app.Activity;
 import android.app.AlarmManager;
+import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
@@ -13,8 +15,6 @@ import android.net.NetworkInfo;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.support.v7.app.AlertDialog;
-import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -28,7 +28,7 @@ import java.util.Map;
 
 import static android.os.SystemClock.elapsedRealtime;
 
-public class ViewEmployee extends AppCompatActivity implements View.OnClickListener {
+public class ViewEmployee extends Activity implements View.OnClickListener {
 
     private TextView textViewId;
     private TextView textViewFirstName;
@@ -70,8 +70,13 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
 
         textViewId.setText(id);
 
-        getSupportActionBar().setTitle("View Employee");
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        getActionBar().setTitle("View Employee");
+        getActionBar().setDisplayHomeAsUpEnabled(true);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
 
         refreshReceiver = new BroadcastReceiver() {
             public void onReceive(Context context, Intent intent) {
@@ -315,6 +320,11 @@ public class ViewEmployee extends AppCompatActivity implements View.OnClickListe
             unregisterReceiver(contextReceiver);
             contextReceiver = null;
         }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
 
         cancelPoll();
     }

@@ -1,6 +1,8 @@
 package com.davidadamojr.employeebase;
 
+import android.app.Activity;
 import android.app.AlarmManager;
+import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
@@ -13,8 +15,6 @@ import android.net.NetworkInfo;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.support.v7.app.AlertDialog;
-import android.support.v7.app.AppCompatActivity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -33,7 +33,7 @@ import java.util.Map;
 
 import static android.os.SystemClock.elapsedRealtime;
 
-public class AllEmployees extends AppCompatActivity implements ListView.OnItemClickListener {
+public class AllEmployees extends Activity implements ListView.OnItemClickListener {
 
     private ListView listView;
 
@@ -47,10 +47,15 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_all_employees);
 
-        getSupportActionBar().setTitle("All Employees");
+        getActionBar().setTitle("All Employees");
 
         listView = (ListView) findViewById(R.id.listView);
         listView.setOnItemClickListener(this);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
 
         registerReceivers();
 
@@ -185,6 +190,11 @@ public class AllEmployees extends AppCompatActivity implements ListView.OnItemCl
             unregisterReceiver(contextReceiver);
             contextReceiver = null;
         }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
 
         cancelPoll();
     }
